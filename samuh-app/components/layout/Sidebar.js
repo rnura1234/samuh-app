@@ -4,12 +4,14 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
+// Update navItems in Sidebar.js
 const navItems = [
-  { label: 'Dashboard',  href: '/dashboard' },
-  { label: 'Members',    href: '/dashboard/members' },
-  { label: 'Deposits',   href: '/dashboard/deposits' },
-  { label: 'Loans',      href: '/dashboard/loans' },
-  { label: 'Reports',    href: '/dashboard/reports' },
+  { label: 'Dashboard',     href: '/dashboard' },
+  { label: 'Members',       href: '/dashboard/members' },
+  { label: 'Add member',    href: '/dashboard/members/invite', adminOnly: true },
+  { label: 'Deposits',      href: '/dashboard/deposits' },
+  { label: 'Loans',         href: '/dashboard/loans' },
+  { label: 'Reports',       href: '/dashboard/reports' },
 ]
 
 export default function Sidebar({ member }) {
