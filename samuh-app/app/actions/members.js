@@ -1,30 +1,22 @@
 // app/actions/members.js
 'use server'
-import { createClient } from '@/lib/supabase/server'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
-
-// Admin client uses SERVICE ROLE key — can create users
-function getAdminClient() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  )
-}
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 export async function inviteMember(formData) {
-  const supabase = createClient()
+  const supabase      = await createClient()
+  const adminSupabase = createAdminClient()
 
-  // Check the person doing this is actually an admin
+  // Verify the caller is an admin
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  const { data: adminMember } = await supabase
+  const { data: adminMember } = await adminSupabase
     .from('members')
     .select('role')
     .eq('user_id', user.id)
     .single()
 
-  if (adminMember?.role !== 'admin') {
+  if (!adminMember || adminMember.role !== 'admin') {
     return { error: 'Only admins can invite members' }
   }
 
@@ -35,24 +27,21 @@ export async function inviteMember(formData) {
   const role     = formData.get('role') || 'member'
   const password = formData.get('password')
 
-  // Basic validation
   if (!name || !phone || !email || !password) {
     return { error: 'Name, phone, email and password are required' }
   }
 
-  const adminSupabase = getAdminClient()
-
-  // Step 1: Create the auth user
+  // Step 1 — create auth user using admin client
   const { data: newUser, error: authError } = await adminSupabase.auth.admin.createUser({
     email,
     password,
-    email_confirm: true, // skip email confirmation
+    email_confirm: true,
   })
 
   if (authError) return { error: authError.message }
 
-  // Step 2: Insert into members table
-  const { error: memberError } = await supabase
+  // Step 2 — insert into members using admin client (bypasses RLS)
+  const { error: memberError } = await adminSupabase
     .from('members')
     .insert({
       name,
@@ -63,7 +52,7 @@ export async function inviteMember(formData) {
     })
 
   if (memberError) {
-    // Rollback: delete the auth user if member insert fails
+    // Rollback auth user if member insert fails
     await adminSupabase.auth.admin.deleteUser(newUser.user.id)
     return { error: memberError.message }
   }
