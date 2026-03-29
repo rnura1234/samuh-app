@@ -17,9 +17,6 @@ export default async function InviteMemberPage() {
     .eq('user_id', user.id)
     .single()
 
-  console.log('member from DB:', member)        // should say { role: 'admin' }
-  console.log('user.role from auth:', user.role) // always says 'authenticated' — ignore this
-
   // ✅ use member.role not user.role
   if (!member || member.role !== 'admin') {
     redirect('/dashboard')

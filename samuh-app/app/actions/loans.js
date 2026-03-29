@@ -134,12 +134,12 @@ export async function recordRepayment(formData) {
 
   if (!amount || amount <= 0) return { error: 'Invalid repayment amount' }
 
-  // Get loan details
-  const { data: loan } = await supabase
-    .from('loans')
-    .select('*, loan_repayments(amount)')
-    .eq('id', loanId)
-    .single()
+
+    const { data: loan } = await supabase
+  .from('loans')
+  .select('*, members!loans_member_id_fkey(name, phone)')
+  .eq('id', loanId)
+  .single()
 
   if (!loan) return { error: 'Loan not found' }
 

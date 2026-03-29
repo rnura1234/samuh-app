@@ -9,15 +9,16 @@ export default async function LoanDetailPage({ params }) {
   const { id } = await params
   const supabase = createAdminClient()
 
-  const { data: loan } = await supabase
-    .from('loans')
-    .select(`
-      *,
-      members(name, phone),
-      loan_repayments(*)
-    `)
-    .eq('id', id)
-    .single()
+
+    const { data: loan } = await supabase
+  .from('loans')
+  .select(`
+    *,
+    members!loans_member_id_fkey(name, phone),
+    loan_repayments(*)
+  `)
+  .eq('id', id)
+  .single()
 
   if (!loan) redirect('/dashboard/loans')
 

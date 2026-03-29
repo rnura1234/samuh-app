@@ -1,14 +1,21 @@
 // app/(auth)/login/page.js
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [email, setEmail] = useState('')
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const reason       = searchParams.get('reason')
+
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error,    setError]    = useState(
+    reason === 'timeout'
+      ? 'Your session expired after 2 hours. Please sign in again.'
+      : ''
+  )
   const [loading, setLoading] = useState(false)
 
   async function handleLogin(e) {
@@ -24,6 +31,9 @@ export default function LoginPage() {
       setLoading(false)
       return
     }
+
+    // Store login time for session tracking
+    localStorage.setItem('samuh_login_time', Date.now().toString())
 
     router.push('/dashboard')
     router.refresh()
@@ -60,7 +70,11 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">
+            <p className={`text-sm px-3 py-2 rounded-lg ${
+              reason === 'timeout'
+                ? 'bg-amber-50 text-amber-700'
+                : 'bg-red-50 text-red-500'
+            }`}>
               {error}
             </p>
           )}
