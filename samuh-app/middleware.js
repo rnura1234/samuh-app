@@ -25,22 +25,19 @@ export async function middleware(request) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-
   const { pathname } = request.nextUrl
 
-  // If not logged in and trying to access dashboard → redirect to login
+  // Protect dashboard routes
   if (!user && pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // If logged in and trying to access login → redirect to dashboard
-  if (user && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
+  // ✅ Do NOT auto-redirect logged-in users away from login
+  // Let them sign in with a different account if they want
 
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/login', '/register'],
 }

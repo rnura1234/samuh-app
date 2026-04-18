@@ -1,31 +1,33 @@
 // app/dashboard/loans/page.js
+import { requireAuth } from '@/lib/auth'
 import { createAdminClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import LoanActions from './LoanActions'
 
 export default async function LoansPage() {
+  const { samuh, member, isSuperAdmin } = await requireAuth()
+  const isAdmin = member?.role === 'admin' || isSuperAdmin
+
   const supabase = createAdminClient()
 
-  // Step 1 — fetch loans and members separately, no nested join
-   const { data: loans, error } = await supabase
+ const { data: loans, error } = await supabase
   .from('loans')
   .select(`
     *,
-    members!loans_member_id_fkey(name, phone)
+    samuh_members!loans_member_id_fkey(name, phone)
   `)
+  .or(`samuh_id.eq.${samuh.id},samuh_id.is.null`)
   .order('created_at', { ascending: false })
 
-  console.log('total loans fetched:', loans?.length)
-  console.log('error:', error)
 
-  // Step 2 — fetch repayments separately
   const { data: allRepayments } = await supabase
     .from('loan_repayments')
     .select('loan_id, amount')
-
-  // Step 3 — merge repayments into loans manually
+    .eq('samuh_id', samuh.id)
+console.log("loans", loans);
+console.log("allRepayments", allRepayments);
   const loansWithRepayments = loans?.map(loan => {
-    const repayments = allRepayments?.filter(r => r.loan_id === loan.id) || []
+    const repayments  = allRepayments?.filter(r => r.loan_id === loan.id) || []
     const totalRepaid = repayments.reduce((s, r) => s + Number(r.amount), 0)
     const outstanding = Number(loan.amount) - totalRepaid
     return { ...loan, totalRepaid, outstanding }
@@ -40,7 +42,6 @@ export default async function LoansPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-semibold text-gray-800">Loans</h2>
@@ -56,7 +57,7 @@ export default async function LoansPage() {
         </Link>
       </div>
 
-      {/* Summary cards */}
+      {/* Summary */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-white border rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Pending approval</p>
@@ -78,16 +79,57 @@ export default async function LoansPage() {
         </div>
       </div>
 
-      {/* Pending loans — most important, shown first */}
+      {/* Pending — admin sees approve/reject, member just sees status */}
       {pending.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-amber-600 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+          <h3 className="text-sm font-medium text-amber-600 mb-3">
             Pending approval ({pending.length})
           </h3>
-          <div className="bg-white border border-amber-200 rounded-xl overflow-hidden divide-y">
+          <div className="bg-white border border-amber-200 rounded-xl divide-y overflow-hidden">
             {pending.map(loan => (
-              <PendingLoanCard key={loan.id} loan={loan} />
+              <div key={loan.id} className="p-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-semibold">
+                      {loan.samuh_members?.name?.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">{loan.samuh_members?.name}</p>
+                      <p className="text-xs text-gray-400">{loan.samuh_members?.phone}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-semibold text-gray-800">
+                      ₹{Number(loan.amount).toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-xs text-gray-400">{loan.interest_rate}% / month</p>
+                  </div>
+                </div>
+
+                {loan.reason && (
+                  <div className="mt-3 bg-amber-50 rounded-lg px-3 py-2">
+                    <p className="text-xs text-gray-600">
+                      <span className="font-medium">Reason:</span> {loan.reason}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mt-4 pt-3 border-t">
+                  <p className="text-xs text-gray-400">
+                    Applied: {new Date(loan.created_at).toLocaleDateString('en-IN')}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/dashboard/loans/${loan.id}`}
+                      className="text-xs px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
+                    >
+                      View details
+                    </Link>
+                    {/* ✅ Only admin sees approve/reject */}
+                    {isAdmin && <LoanActions loanId={loan.id} />}
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -96,8 +138,7 @@ export default async function LoansPage() {
       {/* Active loans */}
       {active.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-blue-600 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span>
+          <h3 className="text-sm font-medium text-blue-600 mb-3">
             Active loans ({active.length})
           </h3>
           <div className="bg-white border rounded-xl overflow-hidden">
@@ -118,10 +159,9 @@ export default async function LoansPage() {
         </div>
       )}
 
-      {/* Empty state */}
       {loansWithRepayments.length === 0 && (
         <div className="bg-white border rounded-xl py-16 text-center">
-          <p className="text-gray-400 mb-2">No loans found.</p>
+          <p className="text-gray-400 mb-2">No loans yet.</p>
           <Link href="/dashboard/loans/apply" className="text-blue-600 text-sm hover:underline">
             Apply for first loan →
           </Link>
@@ -131,55 +171,6 @@ export default async function LoansPage() {
   )
 }
 
-// ── Pending loan card ─────────────────────────────────────────
-function PendingLoanCard({ loan }) {
-  return (
-    <div className="p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 font-semibold">
-            {loan.members?.name?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="font-medium text-gray-800">{loan.members?.name}</p>
-            <p className="text-xs text-gray-400">{loan.members?.phone}</p>
-          </div>
-        </div>
-        <div className="text-right">
-          <p className="text-xl font-semibold text-gray-800">
-            ₹{Number(loan.amount).toLocaleString('en-IN')}
-          </p>
-          <p className="text-xs text-gray-400">{loan.interest_rate}% / month</p>
-        </div>
-      </div>
-
-      {loan.reason && (
-        <div className="mt-3 bg-amber-50 rounded-lg px-3 py-2">
-          <p className="text-xs text-gray-600">
-            <span className="font-medium">Reason:</span> {loan.reason}
-          </p>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-4 pt-3 border-t">
-        <p className="text-xs text-gray-400">
-          Applied: {new Date(loan.created_at).toLocaleDateString('en-IN')}
-        </p>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/dashboard/loans/${loan.id}`}
-            className="text-xs px-3 py-1.5 border rounded-lg text-gray-600 hover:bg-gray-50 transition"
-          >
-            View details
-          </Link>
-          <LoanActions loanId={loan.id} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Active/Closed loan table ──────────────────────────────────
 function LoanTable({ loans }) {
   return (
     <table className="w-full text-sm">
@@ -190,7 +181,6 @@ function LoanTable({ loans }) {
           <th className="text-left px-5 py-3 text-gray-500 font-medium">Interest</th>
           <th className="text-left px-5 py-3 text-gray-500 font-medium">Repaid</th>
           <th className="text-left px-5 py-3 text-gray-500 font-medium">Outstanding</th>
-          <th className="text-left px-5 py-3 text-gray-500 font-medium">Issued on</th>
           <th className="text-left px-5 py-3 text-gray-500 font-medium">Status</th>
           <th className="text-left px-5 py-3 text-gray-500 font-medium">Action</th>
         </tr>
@@ -199,8 +189,8 @@ function LoanTable({ loans }) {
         {loans.map(loan => (
           <tr key={loan.id} className="border-b last:border-0 hover:bg-gray-50 transition">
             <td className="px-5 py-3">
-              <p className="font-medium text-gray-800">{loan.members?.name}</p>
-              <p className="text-xs text-gray-400">{loan.members?.phone}</p>
+              <p className="font-medium text-gray-800">{loan.samuh_members?.name}</p>
+              <p className="text-xs text-gray-400">{loan.samuh_members?.phone}</p>
             </td>
             <td className="px-5 py-3 text-gray-700">
               ₹{Number(loan.amount).toLocaleString('en-IN')}
@@ -213,11 +203,6 @@ function LoanTable({ loans }) {
             </td>
             <td className="px-5 py-3 font-medium text-red-600">
               ₹{loan.outstanding.toLocaleString('en-IN')}
-            </td>
-            <td className="px-5 py-3 text-gray-500 text-xs">
-              {loan.issued_at
-                ? new Date(loan.issued_at).toLocaleDateString('en-IN')
-                : '—'}
             </td>
             <td className="px-5 py-3">
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${

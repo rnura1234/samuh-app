@@ -1,34 +1,16 @@
-// app/dashboard/members/invite/page.js
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { requireAdmin } from '@/lib/auth'
 import InviteForm from './InviteForm'
 
 export default async function InviteMemberPage() {
-  const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) redirect('/login')
-
-  // ✅ fetch role from YOUR members table, not from user object
-  const { data: member, error } = await supabase
-    .from('members')
-    .select('role')
-    .eq('user_id', user.id)
-    .single()
-
-  // ✅ use member.role not user.role
-  if (!member || member.role !== 'admin') {
-    redirect('/dashboard')
-  }
+  const { samuh } = await requireAdmin() // ✅ redirects if not admin
 
   return (
     <div className="max-w-lg">
       <h2 className="text-2xl font-semibold text-gray-800 mb-1">Add new member</h2>
-      <p className="text-gray-400 text-sm mb-6">
-        Create a Samuh account for a new group member.
+      <p className="text-sm text-gray-400 mb-2">
+        Adding to: <span className="text-blue-600 font-medium">{samuh?.name}</span>
       </p>
-      <InviteForm />
+      <InviteForm samuhId={samuh.id} />
     </div>
   )
 }

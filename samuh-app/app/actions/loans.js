@@ -5,57 +5,72 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 // Apply for a loan
+// app/actions/loans.js
 export async function applyLoan(formData) {
-  const supabase = await createClient()
+  const supabase      = await createClient()
   const adminSupabase = createAdminClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'Not authenticated' }
 
-  const { data: member } = await adminSupabase
-    .from('members')
-    .select('id, status')
-    .eq('user_id', user.id)
-    .single()
+  // ✅ Get samuh_id and user_id from form
+  const samuhId = formData.get('samuh_id')
+  const userId  = formData.get('user_id')
+  const amount  = parseFloat(formData.get('amount'))
+  const reason  = formData.get('reason')
 
-  if (!member) return { error: 'Member not found' }
-  if (member.status !== 'active') return { error: 'Inactive members cannot apply for loans' }
-
-  const amount = parseFloat(formData.get('amount'))
-  const reason = formData.get('reason')
-
+  if (!samuhId) return { error: 'Samuh not found' }
   if (!amount || amount <= 0) return { error: 'Invalid loan amount' }
 
-  // Check loan limit — max = 3× total deposits
+  // ✅ Get member from samuh_members
+  const { data: member } = await adminSupabase
+    .from('samuh_members')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .eq('samuh_id', samuhId)
+    .single()
+
+  if (!member) return { error: 'Member not found in this Samuh' }
+  if (member.status !== 'active') return { error: 'Inactive members cannot apply for loans' }
+
+  // ✅ Check loan limit using member_id and samuh_id
   const { data: deposits } = await adminSupabase
     .from('deposits')
     .select('amount')
     .eq('member_id', member.id)
+    .eq('samuh_id', samuhId)
     .eq('is_paid', true)
 
-  const totalDeposited = deposits?.reduce((sum, d) => sum + Number(d.amount), 0) || 0
+  const totalDeposited = deposits?.reduce(
+    (sum, d) => sum + Number(d.amount), 0
+  ) || 0
 
-  const { data: settings } = await adminSupabase
-    .from('settings')
+  // ✅ Get samuh settings
+  const { data: samuh } = await adminSupabase
+    .from('samuhs')
     .select('max_loan_multiplier, loan_interest_rate')
+    .eq('id', samuhId)
     .single()
 
-  const maxLoan = totalDeposited * (settings?.max_loan_multiplier || 3)
+  const maxLoan = totalDeposited * (samuh?.max_loan_multiplier || 3)
 
   if (amount > maxLoan) {
     return {
-      error: `Loan amount exceeds limit. Max allowed: ₹${maxLoan.toLocaleString('en-IN')} (3× your total deposits of ₹${totalDeposited.toLocaleString('en-IN')})`
+      error: `Loan amount exceeds limit. Max: ₹${maxLoan.toLocaleString('en-IN')} (${samuh?.max_loan_multiplier || 3}× your deposits of ₹${totalDeposited.toLocaleString('en-IN')})`
     }
   }
 
+  // ✅ Insert loan with samuh_id and user_id
   const { error } = await adminSupabase
     .from('loans')
     .insert({
-      member_id: member.id,
+      member_id:     member.id,
+      user_id:       user.id,
+      samuh_id:      samuhId,
       amount,
-      interest_rate: settings?.loan_interest_rate || 2,
+      interest_rate: samuh?.loan_interest_rate || 2,
       reason,
-      status: 'pending',
+      status:        'pending',
     })
 
   if (error) return { error: error.message }

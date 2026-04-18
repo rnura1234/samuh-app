@@ -27,7 +27,7 @@ export async function sendDepositReminders() {
 
   // Get all active members
   const { data: members } = await supabase
-    .from('members')
+    .from('samuh_members')
     .select('id, name, phone')
     .eq('status', 'active')
 

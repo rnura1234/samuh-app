@@ -8,7 +8,7 @@ export async function generateMonthlyDeposits(month, year) {
   const supabase = createAdminClient()
 
   const { data: members } = await supabase
-    .from('members')
+    .from('samuh_members')
     .select('id')
     .eq('status', 'active')
 
@@ -111,23 +111,26 @@ export async function applyLateFee(depositId, fee) {
 }
 // Add to app/actions/deposits.js
 
+// app/actions/deposits.js — updated saveMonthlyEntry
 export async function saveMonthlyEntry({
-  memberId, month, year, depositId,
+  memberId, userId, samuhId,
+  month, year, depositId,
   bachat, fine, otherFee,
   loanId, loanReturn, loanInterest, loanOtherFee,
 }) {
   const supabase = createAdminClient()
 
-  // ── Save deposit (saving section) ──
   const depositData = {
-    member_id: memberId,
+    member_id: memberId,   // ✅ samuh_members.id
+    user_id:   userId,     // ✅ auth user id (can be null for now)
+    samuh_id:  samuhId,
     month,
     year,
-    amount:   bachat,
-    late_fee: fine,
-    is_paid:  bachat > 0,
-    paid_at:  bachat > 0 ? new Date().toISOString() : null,
-    notes:    otherFee > 0 ? `Other fee: ${otherFee}` : null,
+    amount:    bachat,
+    late_fee:  fine,
+    is_paid:   bachat > 0,
+    paid_at:   bachat > 0 ? new Date().toISOString() : null,
+    notes:     otherFee > 0 ? `Other fee: ${otherFee}` : null,
   }
 
   if (depositId) {
@@ -143,42 +146,43 @@ export async function saveMonthlyEntry({
     if (error) return { error: error.message }
   }
 
-  // Log saving to transactions
   if (bachat > 0) {
-    const total = bachat + fine + otherFee
     await supabase.from('transactions').insert({
       member_id: memberId,
+      user_id:   userId,
+      samuh_id:  samuhId,
       type:      'deposit',
-      amount:    total,
+      amount:    bachat + fine + otherFee,
       direction: 'credit',
       note:      `Saving: ₹${bachat}, Fine: ₹${fine}, Other: ₹${otherFee}`,
     })
   }
 
-  // ── Save loan repayment (loan section) ──
   if (loanId && loanReturn > 0) {
     const { error: repayError } = await supabase
       .from('loan_repayments')
       .insert({
-        loan_id: loanId,
-        amount:  loanReturn,
-        notes:   `Interest: ₹${loanInterest}, Other: ₹${loanOtherFee}`,
-        paid_at: new Date().toISOString(),
+        loan_id:  loanId,
+        samuh_id: samuhId,
+        amount:   loanReturn,
+        notes:    `Interest: ₹${loanInterest}, Other: ₹${loanOtherFee}`,
+        paid_at:  new Date().toISOString(),
       })
 
     if (repayError) return { error: repayError.message }
 
-    // Log loan repayment to transactions
     await supabase.from('transactions').insert({
-      member_id: memberId,
-      type:      'loan_repayment',
-      amount:    loanReturn + loanInterest + loanOtherFee,
-      direction: 'credit',
+      member_id:    memberId,
+      user_id:      userId,
+      samuh_id:     samuhId,
+      type:         'loan_repayment',
+      amount:       loanReturn + loanInterest + loanOtherFee,
+      direction:    'credit',
       reference_id: loanId,
-      note: `Loan return: ₹${loanReturn}, Interest: ₹${loanInterest}, Other: ₹${loanOtherFee}`,
+      note:         `Loan return: ₹${loanReturn}, Interest: ₹${loanInterest}, Other: ₹${loanOtherFee}`,
     })
 
-    // Check if loan is fully paid — if so close it
+    // Close loan if fully paid
     const { data: loan } = await supabase
       .from('loans')
       .select('amount, loan_repayments(amount)')
@@ -188,7 +192,6 @@ export async function saveMonthlyEntry({
     if (loan) {
       const totalRepaid = loan.loan_repayments
         .reduce((s, r) => s + Number(r.amount), 0)
-
       if (totalRepaid >= Number(loan.amount)) {
         await supabase
           .from('loans')

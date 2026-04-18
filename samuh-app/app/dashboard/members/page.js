@@ -1,17 +1,20 @@
 // app/dashboard/members/page.js
-import { createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 
 export default async function MembersPage() {
-  const supabase = createAdminClient()
+  const supabase = await createClient()
 
-  const { data: members } = await supabase
-    .from('members')
+  const { data: members, error } = await supabase
+    .from('samuh_members')
     .select('*')
     .order('created_at', { ascending: true })
 
+    console.log("members",members)
+
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-semibold text-gray-800">Members</h2>
@@ -27,6 +30,7 @@ export default async function MembersPage() {
         </Link>
       </div>
 
+      {/* Table */}
       <div className="bg-white border rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b">
@@ -90,7 +94,7 @@ export default async function MembersPage() {
             {(!members || members.length === 0) && (
               <tr>
                 <td colSpan={7} className="text-center py-10 text-gray-400">
-                  No members yet. Click "+ Add member" to get started.
+                  No members yet. Click Add member to get started.
                 </td>
               </tr>
             )}

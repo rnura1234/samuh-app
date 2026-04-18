@@ -1,44 +1,59 @@
 // app/dashboard/members/[id]/page.js
-import { createAdminClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
+import { getActiveSamuh } from '@/lib/samuh'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import MemberActions from './MemberActions'
 
 export default async function MemberDetailPage({ params }) {
-  // ✅ await params first — required in Next.js 15
   const { id } = await params
 
-  const supabase = createAdminClient()
+  const supabase      = await createClient()
+  const adminSupabase = createAdminClient()
 
-  const { data: member, error } = await supabase
-    .from('members')
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  // Get current user's role in this samuh
+  const { samuh, member: currentMember } = await getActiveSamuh(user.id)
+  if (!samuh) redirect('/dashboard')
+
+  // Get the member being viewed
+  const { data: member } = await adminSupabase
+    .from('samuh_members')
     .select('*')
     .eq('id', id)
+    .eq('samuh_id', samuh.id) // ✅ only members of same samuh
     .single()
-
-  console.log('member:', member)
-  console.log('error:', error)
 
   if (!member) redirect('/dashboard/members')
 
-  const { data: deposits } = await supabase
+  // Get deposit history
+  const { data: deposits } = await adminSupabase
     .from('deposits')
     .select('*')
-    .eq('member_id', member.id)
-    .order('year', { ascending: false })
+    .eq('member_id', id)
+    .eq('samuh_id', samuh.id)
+    .order('year',  { ascending: false })
     .order('month', { ascending: false })
 
-  const { data: loans } = await supabase
+  // Get loans
+  const { data: loans } = await adminSupabase
     .from('loans')
     .select('*')
-    .eq('member_id', member.id)
+    .eq('user_id', member.user_id)
+    .eq('samuh_id', samuh.id)
     .order('created_at', { ascending: false })
 
   const totalDeposited = deposits
-    ?.filter(d => d.is_paid)
-    .reduce((sum, d) => sum + Number(d.amount), 0) || 0
+  ?.filter(d => d.is_paid)
+  .reduce((sum, d) => {
+    const amount = Number(d.amount) || 0;
+    const lateFee = Number(d.late_fee) || 0;
+    return sum + amount + lateFee;
+  }, 0) || 0;
 
-  const activeLoans = loans?.filter(l => l.status === 'active') || []
+  const activeLoans     = loans?.filter(l => l.status === 'active') || []
   const totalLoanAmount = activeLoans.reduce((sum, l) => sum + Number(l.amount), 0)
 
   return (
@@ -90,9 +105,7 @@ export default async function MemberDetailPage({ params }) {
         </div>
         <div className="bg-white border rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Active loans</p>
-          <p className="text-xl font-semibold text-gray-800">
-            {activeLoans.length}
-          </p>
+          <p className="text-xl font-semibold text-gray-800">{activeLoans.length}</p>
         </div>
         <div className="bg-white border rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Loan outstanding</p>
@@ -111,6 +124,8 @@ export default async function MemberDetailPage({ params }) {
               <tr className="border-b">
                 <th className="text-left py-2 text-gray-400 font-normal">Month</th>
                 <th className="text-left py-2 text-gray-400 font-normal">Amount</th>
+                <th className="text-left py-2 text-gray-400 font-normal">Late fee</th> 
+                <th className="text-left py-2 text-gray-400 font-normal">Total</th>
                 <th className="text-left py-2 text-gray-400 font-normal">Status</th>
                 <th className="text-left py-2 text-gray-400 font-normal">Paid on</th>
               </tr>
@@ -120,12 +135,17 @@ export default async function MemberDetailPage({ params }) {
                 <tr key={d.id} className="border-b last:border-0">
                   <td className="py-2 text-gray-700">
                     {new Date(d.year, d.month - 1).toLocaleString('en-IN', {
-                      month: 'long',
-                      year: 'numeric',
+                      month: 'long', year: 'numeric',
                     })}
                   </td>
                   <td className="py-2 text-gray-700">
                     ₹{Number(d.amount).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-2 text-gray-700">
+                    ₹{Number(d.late_fee).toLocaleString('en-IN')}
+                  </td>
+                  <td className="py-2 text-gray-700">
+                    ₹{(Number(d.amount || 0) + Number(d.late_fee || 0)).toLocaleString('en-IN')}
                   </td>
                   <td className="py-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs ${
@@ -150,8 +170,11 @@ export default async function MemberDetailPage({ params }) {
         )}
       </div>
 
-      {/* Actions */}
-      <MemberActions member={member} />
+      {/* ✅ Pass currentUserRole so MemberActions knows who is viewing */}
+      <MemberActions
+        member={member}
+        currentUserRole={currentMember?.role}
+      />
     </div>
   )
 }

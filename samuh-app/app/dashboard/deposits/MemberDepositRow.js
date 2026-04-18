@@ -5,14 +5,14 @@ import { saveMonthlyEntry } from '@/app/actions/deposits'
 
 export default function MemberDepositRow({
   index, member, deposit, loan, repayment,
-  month, year, settings
+  month, year, settings, samuhId
 }) {
-  const defaultAmount = settings?.monthly_deposit_amount || 1000
+  const defaultAmount = Number(settings?.monthly_deposit_amount || 1000)
 
   const [saving, setSaving] = useState({
-    bachat:    deposit?.amount     || defaultAmount,
-    fine:      deposit?.late_fee   || 0,
-    otherFee:  deposit?.notes      ? 0 : 0,
+    bachat:   deposit?.amount   || defaultAmount,
+    fine:     deposit?.late_fee || 0,
+    otherFee: 0,
   })
 
   const [loanEntry, setLoanEntry] = useState({
@@ -24,21 +24,25 @@ export default function MemberDepositRow({
   const [loading,  setLoading]  = useState(false)
   const [saved,    setSaved]    = useState(!!deposit?.is_paid)
   const [message,  setMessage]  = useState(null)
-  const [expanded, setExpanded] = useState(!deposit?.is_paid)
+  const [expanded, setExpanded] = useState(!deposit?.is_paid);
+
+  console.log("deposits",deposit);
 
   // Saving totals
-  const savingTotal = Number(saving.bachat || 0) +
-                      Number(saving.fine   || 0) +
-                      Number(saving.otherFee || 0)
+  const savingTotal =
+    Number(saving.bachat   || 0) +
+    Number(saving.fine     || 0) +
+    Number(saving.otherFee || 0)
 
   // Loan totals
-  const loanTotal = Number(loanEntry.returnAmount || 0) +
-                    Number(loanEntry.interest      || 0) +
-                    Number(loanEntry.otherFee      || 0)
+  const loanTotal =
+    Number(loanEntry.returnAmount || 0) +
+    Number(loanEntry.interest     || 0) +
+    Number(loanEntry.otherFee     || 0)
 
   // Remaining loan
   const oldOutstanding = loan?.outstanding || 0
-  const remainingLoan  = oldOutstanding - Number(loanEntry.returnAmount || 0)
+  const remainingLoan  = Math.max(0, oldOutstanding - Number(loanEntry.returnAmount || 0))
 
   async function handleSave() {
     setLoading(true)
@@ -46,6 +50,8 @@ export default function MemberDepositRow({
 
     const res = await saveMonthlyEntry({
       memberId:     member.id,
+      userId:       member.user_id,
+      samuhId,
       month,
       year,
       depositId:    deposit?.id || null,
@@ -73,8 +79,8 @@ export default function MemberDepositRow({
   }
 
   return (
-    <div className={`bg-white ${saved ? '' : 'bg-amber-50/30'}`}>
-      {/* Member header row — click to expand/collapse */}
+    <div className={`bg-white ${!saved ? 'bg-amber-50/30' : ''}`}>
+      {/* Header row — click to expand */}
       <div
         className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 transition"
         onClick={() => setExpanded(!expanded)}
@@ -115,61 +121,57 @@ export default function MemberDepositRow({
         <div className="px-4 pb-4 pt-1 bg-gray-50 border-t">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            {/* ── Saving (Bachat) section ── */}
+            {/* Saving section */}
             <div className="bg-white border rounded-xl overflow-hidden">
               <div className="bg-green-600 text-white px-4 py-2">
                 <p className="text-sm font-semibold">बचत / Saving (Bachat)</p>
               </div>
               <div className="p-4 space-y-3">
-
-                {/* 1. Monthly saving */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     1. मासिक बचत
                     <span className="block text-gray-400">Monthly saving</span>
                   </label>
                   <input
-                    type="number"
+                    // type="number"
+                    type="text"
+                    inputMode="numeric"
                     min="0"
                     value={saving.bachat}
                     onChange={e => setSaving({ ...saving, bachat: e.target.value })}
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
-
-                {/* 2. Fine */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     2. जुर्माना
                     <span className="block text-gray-400">Fine</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     min="0"
                     value={saving.fine}
                     onChange={e => setSaving({ ...saving, fine: e.target.value })}
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
-
-                {/* 3. Other fee */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     3. अन्य शुल्क
                     <span className="block text-gray-400">Other fee</span>
                   </label>
                   <input
-                    type="number"
+                   type="text"
+                    inputMode="numeric"
                     min="0"
                     value={saving.otherFee}
                     onChange={e => setSaving({ ...saving, otherFee: e.target.value })}
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
-
-                {/* Total */}
-                <div className="flex items-center justify-between border-t pt-2 mt-1">
-                  <span className="text-xs font-semibold text-gray-700">4. कुल / Total (1+2+3)</span>
+                <div className="flex items-center justify-between border-t pt-2">
+                  <span className="text-xs font-semibold text-gray-700">4. कुल / Total</span>
                   <span className="text-sm font-bold text-green-700">
                     ₹{savingTotal.toLocaleString('en-IN')}
                   </span>
@@ -177,34 +179,33 @@ export default function MemberDepositRow({
               </div>
             </div>
 
-            {/* ── Loan Payment section ── */}
+            {/* Loan Payment section */}
             <div className="bg-white border rounded-xl overflow-hidden">
               <div className="bg-red-600 text-white px-4 py-2 flex items-center justify-between">
                 <p className="text-sm font-semibold">ऋण भुगतान / Loan Payment</p>
                 {!loan && (
-                  <span className="text-xs bg-red-500 px-2 py-0.5 rounded-full">No active loan</span>
+                  <span className="text-xs bg-red-500 px-2 py-0.5 rounded-full">
+                    No active loan
+                  </span>
                 )}
               </div>
               <div className="p-4 space-y-3">
-
-                {/* Outstanding info */}
                 {loan && (
-                  <div className="bg-red-50 rounded-lg px-3 py-2 flex items-center justify-between mb-1">
-                    <span className="text-xs text-red-600">पुराना बकाया / Old outstanding</span>
+                  <div className="bg-red-50 rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span className="text-xs text-red-600">पुराना बकाया / Outstanding</span>
                     <span className="text-sm font-semibold text-red-700">
                       ₹{oldOutstanding.toLocaleString('en-IN')}
                     </span>
                   </div>
                 )}
-
-                {/* 1. Loan return */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     1. ऋण वापसी
                     <span className="block text-gray-400">Loan return</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     min="0"
                     max={oldOutstanding}
                     value={loanEntry.returnAmount}
@@ -213,15 +214,14 @@ export default function MemberDepositRow({
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-50 disabled:text-gray-400"
                   />
                 </div>
-
-                {/* 2. Interest */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     2. ब्याज
                     <span className="block text-gray-400">Interest</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     min="0"
                     value={loanEntry.interest}
                     onChange={e => setLoanEntry({ ...loanEntry, interest: e.target.value })}
@@ -229,15 +229,14 @@ export default function MemberDepositRow({
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-50 disabled:text-gray-400"
                   />
                 </div>
-
-                {/* 3. Other fee */}
                 <div className="flex items-center justify-between gap-3">
                   <label className="text-xs text-gray-600 w-32 shrink-0">
                     3. अन्य शुल्क
                     <span className="block text-gray-400">Other fee</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     min="0"
                     value={loanEntry.otherFee}
                     onChange={e => setLoanEntry({ ...loanEntry, otherFee: e.target.value })}
@@ -245,26 +244,22 @@ export default function MemberDepositRow({
                     className="flex-1 border rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-red-500 disabled:bg-gray-50 disabled:text-gray-400"
                   />
                 </div>
-
-                {/* 4. Total paid this month */}
                 <div className="flex items-center justify-between border-t pt-2">
-                  <span className="text-xs font-semibold text-gray-700">4. कुल भुगतान (1+2+3)</span>
+                  <span className="text-xs font-semibold text-gray-700">4. कुल भुगतान</span>
                   <span className="text-sm font-bold text-red-700">
                     ₹{loanTotal.toLocaleString('en-IN')}
                   </span>
                 </div>
-
-                {/* 5. Remaining loan */}
                 <div className={`flex items-center justify-between rounded-lg px-3 py-2 ${
                   remainingLoan > 0 ? 'bg-red-50' : 'bg-green-50'
                 }`}>
                   <span className="text-xs font-semibold text-gray-700">
-                    5. शेष ऋण / Remaining loan
+                    5. शेष ऋण / Remaining
                   </span>
                   <span className={`text-sm font-bold ${
                     remainingLoan > 0 ? 'text-red-700' : 'text-green-700'
                   }`}>
-                    ₹{Math.max(0, remainingLoan).toLocaleString('en-IN')}
+                    ₹{remainingLoan.toLocaleString('en-IN')}
                   </span>
                 </div>
               </div>

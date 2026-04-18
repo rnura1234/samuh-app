@@ -4,35 +4,45 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
-export default function MemberActions({ member }) {
+export default function MemberActions({ member, currentUserRole }) {
   const router = useRouter()
-  const [editing, setEditing] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState(null)
+  const [editing,  setEditing]  = useState(false)
+  const [loading,  setLoading]  = useState(false)
+  const [message,  setMessage]  = useState(null)
   const [form, setForm] = useState({
-    name: member.name,
-    phone: member.phone,
+    name:    member.name,
+    phone:   member.phone,
     address: member.address || '',
-    role: member.role,
+    role:    member.role,
   })
+
+  // ✅ Only admin can edit
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'super_admin'
+
+  // Non-admins see nothing
+  if (!isAdmin) return null
 
   async function handleUpdate(e) {
     e.preventDefault()
     setLoading(true)
     setMessage(null)
+
     const supabase = createClient()
+
+    // ✅ Use samuh_members table instead of members
     const { error } = await supabase
-      .from('members')
+      .from('samuh_members')
       .update({
-        name: form.name,
-        phone: form.phone,
-        address: form.address,
-        role: form.role,
+        name:       form.name,
+        phone:      form.phone,
+        address:    form.address,
+        role:       form.role,
         updated_at: new Date().toISOString(),
       })
       .eq('id', member.id)
 
     setLoading(false)
+
     if (error) {
       setMessage({ type: 'error', text: error.message })
     } else {
@@ -45,18 +55,23 @@ export default function MemberActions({ member }) {
   async function handleToggleStatus() {
     const newStatus = member.status === 'active' ? 'inactive' : 'active'
     const confirmed = window.confirm(
-      `Are you sure you want to ${newStatus === 'inactive' ? 'deactivate' : 'activate'} ${member.name}?`
+      `Are you sure you want to ${
+        newStatus === 'inactive' ? 'deactivate' : 'activate'
+      } ${member.name}?`
     )
     if (!confirmed) return
 
     setLoading(true)
     const supabase = createClient()
+
+    // ✅ Use samuh_members table
     const { error } = await supabase
-      .from('members')
+      .from('samuh_members')
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', member.id)
 
     setLoading(false)
+
     if (error) {
       setMessage({ type: 'error', text: error.message })
     } else {
